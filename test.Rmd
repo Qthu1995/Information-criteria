@@ -1,0 +1,87 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+library(mvtnorm)
+library(MASS)
+library(ggplot2)
+
+set.seed(12345)
+
+################### Simulation for multiple linear regression ###################
+
+simulation.mlr <- function(nsims=500, sample_size=c(8,16,32,64,128, 256, 521, 1024, 2048), p = 5)
+  
+{
+  
+  
+  ls <- length(sample_size)
+  
+  proportion3 <- data.frame(criterion = c(rep("AIC", ls), rep("BIC", ls)),
+                            probability = numeric(ls*2),
+                            samplesize = rep(sample_size, times = 2))
+  
+  for(ss in sample_size){
+    
+    AIC.ST <- 0
+    BIC.ST <- 0
+    for(j in 1:nsims){
+      
+      #generate "true" response
+      
+      X <- matrix(rnorm(ss*p), nrow = ss, ncol = p)
+      epsilon <- rnorm(ss, 0, sd=3)
+      beta <- c(3, 1, rep(0,p-2))
+      beta <- as.matrix(beta)
+      
+      Y <- drop(X%*%beta+epsilon)
+      
+      #generate regression model
+      reg.data <- data.frame(y=Y,x=X)
+      
+      reg.model <- lm(y~., data=reg.data)
+      
+      reg.bestAIC <- stepAIC(reg.model,trace=0, k=2)
+      list.varAIC <- colnames(reg.bestAIC$model)
+      reg.bestBIC <- step(reg.model,trace=0,k=log(ss))
+      list.varBIC <- colnames(reg.bestBIC$model)
+      list.varTrue <- c('y', 'x.X1', 'x.X2')
+      if (identical(list.varAIC, list.varTrue)){
+        AIC.ST <- AIC.ST + 1
+      }
+      if (identical(list.varBIC, list.varTrue)){
+        BIC.ST <- BIC.ST + 1
+      }
+      
+    }
+    
+    proportion3[proportion3$samplesize==ss&proportion3$criterion=="AIC",2]=AIC.ST*100/nsims
+    proportion3[proportion3$samplesize==ss&proportion3$criterion=="BIC",2]=BIC.ST*100/nsims
+    
+    
+  }
+  
+  return(proportion3)
+  
+}
+
+result4 <- simulation.mlr()
+result4p <-  ggplot(data= result4, 
+                    aes(x=samplesize, y=probability, group=as.factor(criterion), color=criterion)) +
+                    geom_line()+ geom_point() + 
+                    theme_bw()+ xlab("Sample size")+ ylab("Probability of selecting the true model")
+
+result4p
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.

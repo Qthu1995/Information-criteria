@@ -1,0 +1,120 @@
+library(MASS)
+
+simulation.study <- function(nsims= 100,  alpha=0, beta.x=1,
+                             nX=10, nZ=5, meanX=0, meanZ=0, 
+                             XZCov=diag(nX+nZ), varmeanX=0, varmeanZ=0,
+                             X=NULL, Y=NULL, var.res=1, var.RE.Intercept=0, var.RE.X=0,
+                             rho=NULL,epsilon=NULL, corsim.var=NULL,
+                             Xin.or.out=rep(TRUE,nX)){
+  # nsamples=c(20)
+  # alpha=5
+  # beta.x=5
+  # nX=10
+  # nZ=5
+  # meanZ=0
+  # meanX=0
+  # XZCov=diag(nX+nZ)
+  # varmeanX=0
+  # varmeanZ=0
+  # X=NULL
+  # Y=NULL
+  # var.res=1
+  # var.RE.Intercept=0
+  # var.RE.X=0
+  # rho=NULL
+  # epsilon=NULL
+  # Xin.or.out=c(rep(TRUE,5),rep(FALSE,5))
+  nsamples <- c(20, 50)
+  
+
+  n.sample.sizes <- length(nsamples)
+  criteria <- c("AIC","BIC")
+  ncriteria <- length(criteria)
+  
+  sd.res <- sqrt(var.res)
+  sdmeanX <- sqrt(varmeanX)
+  sdmeanZ <- sqrt(varmeanZ)
+  
+  beta.z <- rep(0,nZ)
+  Sigma.RE.X <- var.RE.X*diag(nX)
+  sd.RE.Intercept <- sqrt(var.RE.Intercept) # should perhaps be correlated with RE.X?
+  
+  if(length(beta.x)==1){
+    beta.x <- rep(beta.x,nX)
+  }
+  
+  results <- list()
+  
+  for(i in 1:n.sample.sizes){
+
+    n <- nsamples[i]
+    all.x.names <- paste("x.",1:nX,sep="")
+    z.names <- paste("z.",1:nZ,sep="")
+    x.names <- all.x.names[Xin.or.out]
+    
+    reg.terms <- vector("list",nsims)
+
+    reg.rmse <- array(NA,dim=c(nsims,ncriteria))
+    colnames(reg.rmse) <- criteria
+    
+
+    reg.eqn <- as.formula(paste("y",paste(paste("",x.names,sep="",collapse="+"),
+                                            paste("",z.names,sep="",collapse="+"),sep="+",collapse="+"),sep="~"))
+    
+    reg.preds <- array(NA,dim=c(n,ncriteria))
+    
+    for(j in 1:nsims){
+      
+      # Generate "true" response
+      x.sim <- rnorm(nX,meanX,sdmeanX)
+      z.sim <- rnorm(nZ,meanZ,sdmeanZ)
+
+      x.and.z <- mvrnorm(n=n,mu=c(x.sim,z.sim),Sigma=XZCov)
+      x <- x.and.z[,1:nX]
+      z <- x.and.z[,(1+nX):(nZ+nX)]
+  
+      alpha.sim <- rnorm(1,alpha,sd.RE.Intercept)
+      beta.sim <- mvrnorm(n=1,mu=beta.x,Sigma=Sigma.RE.X)
+      y <- rnorm(n,0,sd.res)
+      y <- as.numeric(y+alpha.sim+x%*%beta.sim)
+      reg.data <- data.frame(y=y,x=x,z=z)
+      reg.model <- lm(reg.eqn,data=reg.data)
+     
+
+      # Get second, test set
+      x.sim <- rnorm(nX,meanX,sdmeanX)
+      z.sim <- rnorm(nZ,meanZ,sdmeanZ)
+
+      x.and.z <- mvrnorm(n=n,mu=c(x.sim,z.sim),Sigma=XZCov)
+      x.new <- x.and.z[,1:nX]
+   
+      z.new <- x.and.z[,(1+nX):(nZ+nX)]
+      
+      alpha.sim <- rnorm(1,alpha,sd.RE.Intercept)
+      beta.sim <- mvrnorm(n=1,mu=beta.x,Sigma=Sigma.RE.X)
+
+      y.new <- rnorm(n,0,sd.res)
+      y.new <- as.numeric(y.new+alpha.sim+x.new%*%beta.sim)
+      
+
+      newdata <- data.frame(x=x.new,z=z.new)
+      y.calc <- y.new
+      reg.best <- step( reg.model, trace=0, k=2)
+      reg.preds[,1] <- predict(reg.best,newdata=newdata,type="response")
+      reg.best <- step(reg.model, trace=0, k=log(nsamples))
+      reg.preds[,2] <- predict(reg.best,newdata=newdata,type="response")
+      reg.rmse[j,] <- sqrt(colMeans((reg.preds-y.calc)^2))
+
+    }
+    
+    results[[i]] <- list(reg.rmse)
+  }
+
+    return(results)
+
+}
+
+
+results.strong <- simulation.study(alpha=5,beta.x=5,nX=10,nZ=5,Xin.or.out=c(rep(TRUE,5),rep(FALSE,5)))
+results.tapering <- simulation.study(nsamples=nsamples,alpha=5,beta.x=exp(seq(log(5),log(0.005),length=21)),nX=21,nZ=5,Xin.or.out=c(rep(c(TRUE,rep(FALSE,4)),4),TRUE))
+
